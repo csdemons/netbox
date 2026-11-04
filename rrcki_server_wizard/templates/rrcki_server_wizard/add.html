@@ -1,0 +1,113 @@
+{% extends 'base/layout.html' %}
+
+{% block title %}Добавление сервера и сетевых подключений{% endblock %}
+{% block header %}<h1>Добавление сервера и сетевых подключений</h1>{% endblock %}
+{% block content %}
+<div class="row"><div class="col-12 col-lg-9">
+  {% if step == 'server' %}
+  <div class="card"><div class="card-header"><strong>1. Параметры сервера и размещение</strong></div><div class="card-body">
+    <form method="get" action="">
+      <input type="hidden" name="step" value="connections">
+      {% if server_form.non_field_errors %}<div class="alert alert-danger">{{ server_form.non_field_errors }}</div>{% endif %}
+      {% for field in server_form %}
+        <div class="mb-3"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}{% for error in field.errors %}<div class="text-danger">{{ error }}</div>{% endfor %}
+        </div>
+      {% endfor %}
+      <button type="submit" class="btn btn-primary">Показать интерфейсы и настроить подключения</button>
+    </form>
+  </div></div>
+  {% else %}
+  <div class="card mb-3"><div class="card-header"><strong>1. Параметры сервера и размещение</strong></div><div class="card-body">
+    <p><strong>{{ server_form.cleaned_data.name }}</strong> - {{ server_form.cleaned_data.site }} / {{ server_form.cleaned_data.device_type }}</p>
+    <p class="text-muted">Для изменения параметров сервера вернитесь на первый шаг. Список интерфейсов будет сформирован заново.</p>
+  </div></div>
+  <div class="card"><div class="card-header"><strong>2. Подключение интерфейсов к свободным портам коммутаторов</strong></div><div class="card-body">
+    <form method="post" action="">
+      {% csrf_token %}
+      {% for field in server_form %}{{ field.as_hidden }}{% endfor %}
+      {{ formset.management_form }}
+      {% if formset.non_form_errors %}<div class="alert alert-danger">{{ formset.non_form_errors }}</div>{% endif %}
+      <p class="text-muted">Коммутаторы и свободные порты загружаются из NetBox. Если ничего не выбирать в строке, интерфейс останется без подключения.</p>
+      <div class="table-responsive"><table class="table table-striped align-middle">
+        <thead><tr><th>Интерфейс сервера</th><th>Коммутатор</th><th>Свободный порт</th></tr></thead>
+        <tbody>
+          {% for row in formset.forms %}
+            <tr class="link-row"><td>{{ row.nic }}<strong>{{ row.nic.value }}</strong></td>
+              <td>{{ row.switch }}</td><td>{{ row.port }}</td></tr>
+            {% if row.errors %}<tr><td colspan="3" class="text-danger">{{ row.errors }}</td></tr>{% endif %}
+          {% endfor %}
+        </tbody>
+      </table></div>
+      <a href="{% url 'plugins:rrcki_server_wizard:add' %}" class="btn btn-outline-secondary">Начать заново</a>
+      <button type="submit" class="btn btn-primary">Создать сервер и выбранные кабельные подключения</button>
+    </form>
+  </div></div>
+  {% endif %}
+</div></div>
+{% endblock %}
+
+{% block javascript %}
+{{ block.super }}
+{% if step == 'server' %}
+<script>
+(function () {
+  'use strict';
+  const site = document.querySelector('select[name="site"]');
+  const rack = document.querySelector('select[name="rack"]');
+  if (!site || !rack) return;
+  const url = '{% url "plugins:rrcki_server_wizard:racks" %}';
+  async function loadRacks() {
+    rack.replaceChildren(new Option('Не выбрано', ''));
+    if (!site.value) return;
+    rack.disabled = true;
+    try {
+      const response = await fetch(url + '?site_id=' + encodeURIComponent(site.value), {credentials: 'same-origin'});
+      if (!response.ok) throw new Error('Не удалось загрузить список стоек');
+      const data = await response.json();
+      for (const item of data.results) rack.add(new Option(item.name, String(item.id)));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      rack.disabled = false;
+    }
+  }
+  site.addEventListener('change', loadRacks);
+}());
+</script>
+{% endif %}
+{% if formset %}
+<script>
+(function () {
+  'use strict';
+  const url = '{% url "plugins:rrcki_server_wizard:ports" %}';
+  const siteId = '{{ server_form.cleaned_data.site.pk }}';
+  document.querySelectorAll('.link-row').forEach(function (row) {
+    const sw = row.querySelector('select[name$="-switch"]');
+    const port = row.querySelector('select[name$="-port"]');
+    if (!sw || !port) return;
+    const selectedValue = port.value;
+    async function updatePorts() {
+      const previous = port.value || selectedValue;
+      port.replaceChildren(new Option('Не выбрано', ''));
+      if (!sw.value) return;
+      port.disabled = true;
+      try {
+        const response = await fetch(url + '?site_id=' + encodeURIComponent(siteId) + '&device_id=' + encodeURIComponent(sw.value), {credentials: 'same-origin'});
+        if (!response.ok) throw new Error('Не удалось загрузить свободные порты');
+        const data = await response.json();
+        for (const item of data.results) port.add(new Option(item.name, String(item.id)));
+        if (Array.from(port.options).some(opt => opt.value === previous)) port.value = previous;
+      } catch (err) {
+        console.error(err);
+      } finally {
+        port.disabled = false;
+      }
+    }
+    sw.addEventListener('change', function () {port.value = ''; updatePorts();});
+    if (sw.value) updatePorts();
+  });
+}());
+</script>
+{% endif %}
+{% endblock %}
