@@ -1,7 +1,7 @@
 {% extends 'base/layout.html' %}
 
-{% block title %}Сервер, сетевые карты и коммутация{% endblock %}
-{% block header %}<h1>Сервер, сетевые карты и коммутация</h1>{% endblock %}
+{% block title %}Серверы, коммутаторы и коммутация{% endblock %}
+{% block header %}<h1>Серверы, коммутаторы и коммутация</h1>{% endblock %}
 {% block content %}
 <div class="row"><div class="col-12 col-xl-10">
   {% if step == 'server' %}
@@ -10,16 +10,17 @@
     <input type="hidden" name="stage" value="preview">
     {% if server_form.non_field_errors %}<div class="alert alert-danger">{{ server_form.non_field_errors }}</div>{% endif %}
     <div class="card mb-3">
-      <div class="card-header"><strong>1. Выберите сервер или создайте новый</strong></div>
+      <div class="card-header"><strong>1. Выберите устройство или создайте новое</strong></div>
       <div class="card-body">
         <div class="row">
-          <div class="col-12 col-md-6 mb-3"><label class="form-label" for="{{ server_form.mode.id_for_label }}">{{ server_form.mode.label }}</label>{{ server_form.mode }}{{ server_form.mode.errors }}</div>
+          <div class="col-12 col-md-4 mb-3"><label class="form-label" for="{{ server_form.equipment_kind.id_for_label }}">{{ server_form.equipment_kind.label }}</label>{{ server_form.equipment_kind }}{{ server_form.equipment_kind.errors }}</div>
+          <div class="col-12 col-md-4 mb-3"><label class="form-label" for="{{ server_form.mode.id_for_label }}">{{ server_form.mode.label }}</label>{{ server_form.mode }}{{ server_form.mode.errors }}</div>
           <div class="col-12 col-md-6 mb-3"><label class="form-label" for="{{ server_form.site.id_for_label }}">{{ server_form.site.label }}</label>{{ server_form.site }}{{ server_form.site.errors }}</div>
         </div>
         <div id="existing-server-fields" class="mb-3" data-existing-only>
           <label class="form-label" for="{{ server_form.existing_device.id_for_label }}">{{ server_form.existing_device.label }}</label>
           {{ server_form.existing_device }}{{ server_form.existing_device.errors }}
-          <small id="existing-serial" class="form-text text-muted">Серийный номер будет показан после выбора сервера.</small>
+          <small id="existing-serial" class="form-text text-muted">Серийный номер будет показан после выбора устройства.</small>
         </div>
         <div data-create-only>
           <div class="row">
@@ -37,13 +38,13 @@
         <div class="mb-3">
           <label class="form-label" for="{{ server_form.serial.id_for_label }}">{{ server_form.serial.label }}</label>
           {{ server_form.serial }}{% for error in server_form.serial.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-          <div class="form-text">Для нового сервера укажите серийный номер корпуса. Для существующего — укажите номер, только если его нужно добавить или исправить (требуется право изменения устройства).</div>
+          <div class="form-text">Для нового устройства укажите серийный номер корпуса. Для существующего — укажите номер, только если его нужно добавить или исправить (требуется право изменения устройства).</div>
         </div>
       </div>
     </div>
 
     <div class="card mb-3">
-      <div class="card-header"><strong>2. Проект сервера</strong></div>
+      <div class="card-header"><strong>2. Проект устройства</strong></div>
       <div class="card-body">
         <div class="row align-items-end">
           <div class="col-12 col-md-8 mb-3">
@@ -59,7 +60,7 @@
           {{ server_form.new_project }}{% for error in server_form.new_project.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
           <div class="form-text">Новый проект создастся при сохранении сервера. Его можно будет выбирать для следующих устройств.</div>
         </div>
-        <div class="form-text">При работе с существующим сервером можно привязать его к выбранному проекту.</div>
+        <div class="form-text">Существующий сервер или коммутатор можно привязать к выбранному проекту.</div>
       </div>
     </div>
 
@@ -71,7 +72,7 @@
       <div class="card-body">
         {{ cards_formset.management_form }}
         {% if cards_formset.non_form_errors %}<div class="alert alert-danger">{{ cards_formset.non_form_errors }}</div>{% endif %}
-        <p class="text-muted">Каждая карта может содержать до восьми портов. Укажите наименование, серийный номер, тип портов и их имена. Все порты появятся в штатном списке интерфейсов NetBox.</p>
+        <p class="text-muted">Каждая карта содержит до восьми портов. Для FC можно указать WWPN каждого порта в соответствующем порядке. Интерфейсы и кабели появятся в штатном NetBox.</p>
         <div id="cards-container">
         {% for card in cards_formset %}
           <div class="border rounded p-3 mb-3 card-form-row">
@@ -118,7 +119,7 @@
   </form>
   {% else %}
   <div class="card mb-3"><div class="card-header"><strong>Шаг 1 завершён</strong></div><div class="card-body">
-    <p>Сервер: <strong>{% if server_form.cleaned_data.mode == 'existing' %}{{ server_form.cleaned_data.existing_device }}{% else %}{{ server_form.cleaned_data.name }}{% endif %}</strong>
+    <p>Устройство: <strong>{% if server_form.cleaned_data.mode == 'existing' %}{{ server_form.cleaned_data.existing_device }}{% else %}{{ server_form.cleaned_data.name }}{% endif %}</strong>
        · Площадка: {{ server_form.cleaned_data.site }}</p>
     {% if server_form.cleaned_data.mode == 'create' %}
       <p>Модель: {{ server_form.cleaned_data.device_type }} · Серийный номер: {{ server_form.cleaned_data.serial|default:'не указан' }}</p>
@@ -137,9 +138,9 @@
       {% for card in cards_formset %}{% for field in card %}{{ field.as_hidden }}{% endfor %}{% endfor %}
       {{ connections.management_form }}
       {% if connections.non_form_errors %}<div class="alert alert-danger">{{ connections.non_form_errors }}</div>{% endif %}
-      <div class="alert alert-info">Порты загрузятся из NetBox. Если оставить строку пустой, интерфейс сохранится без кабеля. Для FC показываются FC-порты коммутаторов.</div>
+      <div class="alert alert-info">Целевые устройства ограничены ролями <code>switch_role_slugs</code>. Если список ролей не настроен, подключение к коммутаторам недоступно. Для FC показываются только FC-порты. Незаполненный порт останется без кабеля.</div>
       <div class="table-responsive"><table class="table table-striped align-middle">
-        <thead><tr><th>Интерфейс сервера</th><th>Тип</th><th>Коммутатор / FC-коммутатор</th><th>Свободный порт</th></tr></thead>
+        <thead><tr><th>Интерфейс сервера</th><th>Тип</th><th>Коммутатор / SAN-коммутатор</th><th>Свободный порт</th></tr></thead>
         <tbody>
           {% for row in connections.forms %}
           <tr class="link-row" data-kind="{{ row.kind.value }}">
@@ -151,9 +152,9 @@
           {% endfor %}
         </tbody>
       </table></div>
-      {% if not connections.forms %}<p class="text-muted">Нет свободных интерфейсов. Сервер и проект можно сохранить без кабелей.</p>{% endif %}
+      {% if not connections.forms %}<p class="text-muted">Нет свободных интерфейсов. Устройство и проект можно сохранить без кабелей.</p>{% endif %}
       <button type="button" class="btn btn-outline-secondary" onclick="history.back()">Назад к картам</button>
-      <button type="submit" class="btn btn-primary">Сохранить сервер, карты, проект и кабели</button>
+      <button type="submit" class="btn btn-primary">Сохранить устройство, карты, проект и кабели</button>
     </form>
   </div></div>
   {% endif %}
@@ -167,6 +168,7 @@
 (function () {
   'use strict';
   const mode = document.getElementById('id_mode');
+  const equipmentKind = document.getElementById('id_equipment_kind');
   const site = document.getElementById('id_site');
   const rack = document.getElementById('id_rack');
   const existing = document.getElementById('id_existing_device');
@@ -190,7 +192,8 @@
     if (!site.value) return;
     target.disabled = true;
     try {
-      const response = await fetch(url + '?site_id=' + encodeURIComponent(site.value), {credentials:'same-origin'});
+      const separator = url.includes('?') ? '&' : '?';
+      const response = await fetch(url + separator + 'site_id=' + encodeURIComponent(site.value), {credentials:'same-origin'});
       if (!response.ok) throw new Error('Не удалось получить список. Проверьте права и доступность NetBox.');
       const json = await response.json();
       for (const item of json.results) {
@@ -219,12 +222,17 @@
   site.addEventListener('change', function () {
     errorBox.textContent = '';
     loadSelect('{% url "plugins:netbox_server_wizard:racks" %}', rack, 'Не выбрано', '');
-    loadSelect('{% url "plugins:netbox_server_wizard:devices" %}', existing, 'Выберите сервер', '').then(updateSerial);
+    loadSelect('{% url "plugins:netbox_server_wizard:devices" %}' + '?kind=' + encodeURIComponent(equipmentKind.value), existing, 'Выберите устройство', '').then(updateSerial);
+  });
+  equipmentKind.addEventListener('change', function () {
+    if (site.value) {
+      loadSelect('{% url "plugins:netbox_server_wizard:devices" %}' + '?kind=' + encodeURIComponent(equipmentKind.value), existing, 'Выберите устройство', '').then(updateSerial);
+    }
   });
   existing.addEventListener('change', updateSerial);
   updateMode();
   if (site.value) {
-    loadSelect('{% url "plugins:netbox_server_wizard:devices" %}', existing, 'Выберите сервер', existing.value).then(updateSerial);
+    loadSelect('{% url "plugins:netbox_server_wizard:devices" %}' + '?kind=' + encodeURIComponent(equipmentKind.value), existing, 'Выберите устройство', existing.value).then(updateSerial);
   }
 
   document.getElementById('toggle-project').addEventListener('click', function () {

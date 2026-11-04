@@ -1,0 +1,14 @@
+# Пример override для netbox-community/netbox-docker.
+# Расположите netbox-docker и netbox-publish в одной родительской папке.
+# Использование:
+# docker compose -f docker-compose.yml -f ../netbox-publish/docker/docker-compose.plugin.yml build netbox
+services:
+  netbox:
+    image: netbox-server-wizard:${WIZARD_VERSION:-0.4.0}
+    build:
+      context: ../netbox-publish
+      dockerfile: docker/Dockerfile
+      args:
+        NETBOX_IMAGE: ${NETBOX_BASE_IMAGE:-docker.io/netboxcommunity/netbox:v4.7}
+  netbox-worker:
+    image: netbox-server-wizard:${WIZARD_VERSION:-0.4.0}

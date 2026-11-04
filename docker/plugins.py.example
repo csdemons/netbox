@@ -1,0 +1,15 @@
+# Добавить в существующий netbox-docker/configuration/plugins.py.
+# НЕ перезаписывать существующие PLUGINS и PLUGINS_CONFIG других плагинов.
+
+PLUGINS = [
+    "netbox_server_wizard",
+]
+
+PLUGINS_CONFIG = {
+    "netbox_server_wizard": {
+        # Укажите реальные slug ролей из вашего NetBox!
+        # Без switch_role_slugs список целевых портов намеренно пуст.
+        "switch_role_slugs": ["switch", "san-switch"],
+        "server_role_slugs": ["server"],
+    },
+}

@@ -4,7 +4,7 @@ from netbox.plugins import PluginMenuItem
 menu_items = (
     PluginMenuItem(
         link="plugins:netbox_server_wizard:add",
-        link_text="Добавить сервер / интерфейсы / кабели",
+        link_text="Добавить сервер или коммутатор / кабели",
         permissions=["dcim.view_device", "dcim.view_interface"],
     ),
     PluginMenuItem(

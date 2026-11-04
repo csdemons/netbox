@@ -1,0 +1,58 @@
+name: Проверка NetBox Server Wizard
+
+"on":
+  push:
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Синтаксис
+        run: python -m compileall -q netbox_server_wizard tests
+      - name: Автономные тесты
+        run: python -m unittest discover -s tests -v
+      - name: Сборка wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build --wheel
+
+  netbox-docker-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: netbox-publish
+      - name: Загрузка netbox-docker
+        run: git clone --depth 1 -b release https://github.com/netbox-community/netbox-docker.git netbox-docker
+      - name: Конфигурация тестового стенда
+        run: |
+          cp netbox-publish/docker/plugins.py.example netbox-docker/configuration/plugins.py
+          cp netbox-publish/docker/docker-compose.plugin.yml netbox-docker/docker-compose.override.yml
+      - name: Сборка тестового образа
+        working-directory: netbox-docker
+        run: docker compose build netbox
+      - name: Запуск PostgreSQL и Redis
+        working-directory: netbox-docker
+        run: docker compose up -d postgres redis redis-cache
+      - name: Проверка NetBox и схемы миграций
+        working-directory: netbox-docker
+        run: |
+          docker compose run --rm netbox /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py check
+          docker compose run --rm netbox /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py makemigrations netbox_server_wizard --check --dry-run
+      - name: Интеграционные и конкурентные тесты
+        working-directory: netbox-docker
+        run: docker compose run --rm netbox /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py test netbox_server_wizard.tests --noinput --verbosity 2
+      - name: Диагностика при ошибке
+        if: failure()
+        working-directory: netbox-docker
+        run: docker compose logs --tail=200 netbox postgres redis redis-cache
+      - name: Остановка тестового стенда
+        if: always()
+        working-directory: netbox-docker
+        run: docker compose down -v

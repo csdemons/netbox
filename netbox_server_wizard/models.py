@@ -1,8 +1,10 @@
 """Справочник проектов и учёт установленных дополнительных сетевых карт."""
 from django.db import models
+from django.core.exceptions import ValidationError
+from netbox.models import ChangeLoggedModel
 
 
-class Project(models.Model):
+class Project(ChangeLoggedModel):
     """Проект, к которому относится физическое устройство."""
 
     name = models.CharField("Название", max_length=120, unique=True)
@@ -23,7 +25,7 @@ class Project(models.Model):
         return self.name
 
 
-class DeviceProject(models.Model):
+class DeviceProject(ChangeLoggedModel):
     """Один основной проект для каждого устройства."""
 
     device = models.OneToOneField(
@@ -42,7 +44,7 @@ class DeviceProject(models.Model):
         return f"{self.device} — {self.project}"
 
 
-class Adapter(models.Model):
+class Adapter(ChangeLoggedModel):
     """Физическая дополнительная NIC/HBA и её инвентарные данные."""
 
     KIND_ETHERNET = "ethernet"
@@ -71,7 +73,7 @@ class Adapter(models.Model):
         return f"{self.name} ({self.device})"
 
 
-class AdapterPort(models.Model):
+class AdapterPort(ChangeLoggedModel):
     """Отношение порта адаптера к штатному интерфейсу NetBox."""
 
     adapter = models.ForeignKey(
@@ -85,6 +87,12 @@ class AdapterPort(models.Model):
     class Meta:
         verbose_name = "порт дополнительной карты"
         verbose_name_plural = "порты дополнительных карт"
+
+    def clean(self):
+        super().clean()
+        if self.adapter_id and self.interface_id:
+            if self.adapter.device_id != self.interface.device_id:
+                raise ValidationError("Порт должен принадлежать тому же устройству, что и карта.")
 
     def __str__(self):
         return f"{self.adapter.name}: {self.interface.name}"
