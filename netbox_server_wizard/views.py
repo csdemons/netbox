@@ -11,13 +11,14 @@ from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET, require_http_methods
 
-from dcim.constants import NONCONNECTABLE_IFACE_TYPES
-from dcim.models import Cable, Device, Interface, InterfaceTemplate, Rack, Site
+from dcim.models import Cable, Device, Interface, FrontPort, InterfaceTemplate, Rack, Site
 from netbox.plugins import get_plugin_config
 
-from .choices import ALL_FC_TYPES, interface_kind
+from .choices import interface_kind
 from .forms import AdapterForm, ConnectionForm, ServerForm
 from .models import Adapter, AdapterPort, DeviceProject, Project
+from .endpoints import encode_endpoint, parse_endpoint
+from .targets import permitted_targets, permitted_ports, role_termination_kind
 
 MAX_NICS = 64
 MAX_CARDS = 16
@@ -96,21 +97,29 @@ def get_sources(server_data, cards, user):
 def validate_links(formset, sources):
     if len(formset.forms) != len(sources):
         raise ValidationError("Перечень интерфейсов изменился. Повторите выбор подключений.")
-    ports = set()
+    selected = set()
     plan = []
     for row, source in zip(formset.forms, sources):
         data = row.cleaned_data
         if data.get("nic") != source["name"] or data.get("kind") != source["kind"]:
             raise ValidationError("Интерфейсы формы изменены. Повторите выбор подключений.")
-        port = data.get("port")
-        if port:
-            if port.pk in ports:
-                raise ValidationError("Один и тот же порт коммутатора выбран несколько раз.")
-            ports.add(port.pk)
-            if interface_kind(port.type) != source["kind"]:
-                raise ValidationError("Тип Ethernet/FC у выбранного порта не соответствует интерфейсу устройства.")
-            plan.append((source["name"], port.pk))
+        key = data.get("port")
+        if key:
+            try:
+                endpoint = parse_endpoint(key)
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+            if endpoint in selected:
+                raise ValidationError("Один и тот же порт выбран несколько раз.")
+            selected.add(endpoint)
+            plan.append((source["name"], encode_endpoint_value(endpoint)))
     return plan
+
+
+def encode_endpoint_value(endpoint):
+    """Единый типизированный ключ для финальной транзакции."""
+    kind, pk = endpoint
+    return f"{kind}:{pk}"
 
 
 def require_permission(user, permission):
@@ -132,20 +141,31 @@ def require_object_permission(user, instance, action):
         raise PermissionDenied("Нет прав на выполнение операции с выбранным объектом.")
 
 
-def validate_switch_target(user, port, site, device=None):
-    """Повторить проверку прав, роли и площадки при сохранении."""
-    slugs = get_plugin_config("netbox_server_wizard", "switch_role_slugs") or []
-    if not slugs:
-        raise ValidationError("Администратор не указал switch_role_slugs. Подключения к коммутаторам запрещены.")
-    if port.device.role.slug not in slugs or port.device.site_id != site.pk:
-        raise ValidationError("Выбранный порт не относится к разрешённым коммутаторам площадки.")
-    if device is not None and port.device_id == device.pk:
-        raise ValidationError("Нельзя подключать интерфейс устройства к самому себе.")
-    if interface_kind(port.type) is None:
-        raise ValidationError("Тип выбранного порта не поддерживается мастером.")
-    require_object_permission(user, port.device, "view")
-    require_object_permission(user, port, "view")
-    require_object_permission(user, port, "change")
+def validate_cable_target(user, termination, site, device=None):
+    """Первый кабель можно завершить лишь на разрешённом Interface/FrontPort."""
+    if termination.device.site_id != site.pk:
+        raise ValidationError("Ближайшее устройство находится на другой площадке.")
+    if device is not None and termination.device_id == device.pk:
+        raise ValidationError("Нельзя соединить устройство с самим собой через мастер.")
+    expected_model = role_termination_kind(termination.device)
+    if expected_model is None or termination._meta.model_name != expected_model:
+        raise ValidationError("Роль ближайшего устройства не разрешена или не соответствует типу порта.")
+    if isinstance(termination, Interface):
+        if interface_kind(termination.type) is None:
+            raise ValidationError("Тип интерфейса коммутатора не поддерживается мастером.")
+    elif isinstance(termination, FrontPort):
+        # Многопозиционные порты требуют отдельной модели cable profile.
+        if termination.positions != 1:
+            raise ValidationError("Мастер поддерживает только однопозиционные FrontPort.")
+    else:
+        raise ValidationError("Неизвестный тип окончания кабеля.")
+    require_object_permission(user, termination.device, "view")
+    require_object_permission(user, termination, "view")
+    require_object_permission(user, termination, "change")
+
+
+# Обратная совместимость для кода/тестов v0.4.0.
+validate_switch_target = validate_cable_target
 
 
 def wizard_error_message(exc):
@@ -192,20 +212,30 @@ def save_wizard(request, server_data, cards, link_plan):
                 device.full_clean()
                 device.save(update_fields=["serial"])
 
-        requested_ids = [pk for _, pk in link_plan]
-        if len(requested_ids) != len(set(requested_ids)):
-            raise ValidationError("Один порт коммутатора выбран несколько раз.")
+        try:
+            typed_plan = [(nic_name, parse_endpoint(key)) for nic_name, key in link_plan]
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
+        requested_keys = [key for _, key in typed_plan]
+        if len(requested_keys) != len(set(requested_keys)):
+            raise ValidationError("Один порт выбран несколько раз.")
+        interface_ids = sorted(pk for kind, pk in requested_keys if kind == "interface")
+        frontport_ids = sorted(pk for kind, pk in requested_keys if kind == "frontport")
+        # Стабильный порядок блокировок: сначала Interface, затем FrontPort.
+        # UniqueConstraint(CableTermination) дополнительно защищает от гонок.
         ports = {
-            port.pk: port for port in Interface.objects.select_for_update()
-            .select_related("device__role")
-            .filter(pk__in=requested_ids)
-            .order_by("pk")
+            ("interface", port.pk): port for port in Interface.objects.select_for_update()
+            .select_related("device__role").filter(pk__in=interface_ids).order_by("pk")
         }
-        for _, port_id in link_plan:
-            port = ports.get(port_id)
+        ports.update({
+            ("frontport", port.pk): port for port in FrontPort.objects.select_for_update()
+            .select_related("device__role").filter(pk__in=frontport_ids).order_by("pk")
+        })
+        for _, target_key in typed_plan:
+            port = ports.get(target_key)
             if port is None or port.cable_id is not None or port.mark_connected:
-                raise ValidationError("Порт коммутатора уже занят. Обновите список подключений.")
-            validate_switch_target(user, port, server_data["site"], device)
+                raise ValidationError("Порт ближайшего устройства уже занят. Обновите список подключений.")
+            validate_cable_target(user, port, server_data["site"], device)
 
         if device is None:
             if Device.objects.filter(name__iexact=server_data["name"]).exists():
@@ -271,15 +301,18 @@ def save_wizard(request, server_data, cards, link_plan):
                 require_object_permission(user, relationship, "add")
 
         nics = {nic.name: nic for nic in Interface.objects.filter(device=device)}
-        for nic_name, port_id in link_plan:
+        for nic_name, target_key in typed_plan:
             nic = nics.get(nic_name)
             if nic is None or nic.cable_id is not None or nic.mark_connected:
                 raise ValidationError(f"Интерфейс «{nic_name}» отсутствует или занят.")
-            if interface_kind(nic.type) != interface_kind(ports[port_id].type):
+            port = ports[target_key]
+            # FrontPort содержит тип физического разъёма, а не Ethernet/FC.
+            # Протокол проверяем только для обычного интерфейса коммутатора.
+            if isinstance(port, Interface) and interface_kind(nic.type) != interface_kind(port.type):
                 raise ValidationError(f"Тип порта не соответствует интерфейсу «{nic_name}».")
             require_object_permission(user, nic, "change")
             cable = Cable(
-                a_terminations=[nic], b_terminations=[ports[port_id]],
+                a_terminations=[nic], b_terminations=[port],
                 status=server_data["cable_status"],
             )
             cable.full_clean()
@@ -353,24 +386,13 @@ def free_ports(request):
     kind = request.GET.get("kind", "")
     if not (site_id.isdigit() and device_id.isdigit() and kind in ("fc", "ethernet")):
         return JsonResponse({"results": []}, status=400)
-    device = Device.objects.restrict(request.user, "view").filter(
-        pk=device_id, site_id=site_id
-    ).first()
+    device = permitted_targets(site_id, request.user).filter(pk=device_id).first()
     if device is None:
         return JsonResponse({"results": []}, status=404)
-    role_slugs = get_plugin_config("netbox_server_wizard", "switch_role_slugs")
-    if not role_slugs or device.role.slug not in role_slugs:
-        return JsonResponse({"results": []}, status=404)
-    ports = Interface.objects.restrict(request.user, "view").restrict(request.user, "change").filter(
-        device=device, cable__isnull=True, mark_connected=False,
-    ).exclude(type__in=NONCONNECTABLE_IFACE_TYPES).order_by("name")
-    if kind == "fc":
-        ports = ports.filter(type__in=ALL_FC_TYPES)
-    else:
-        ports = ports.exclude(type__in=ALL_FC_TYPES)
+    ports = permitted_ports(device, request.user, kind)
     return JsonResponse({"results": [
-        {"id": p.pk, "name": p.name} for p in ports[:512]
-        if interface_kind(p.type) == kind
+        {"id": encode_endpoint(port), "name": port.name, "type": port._meta.model_name}
+        for port in ports
     ]})
 
 

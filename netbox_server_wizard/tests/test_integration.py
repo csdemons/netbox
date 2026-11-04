@@ -16,14 +16,14 @@ from django.test import RequestFactory, TestCase, TransactionTestCase
 
 from core.models import ObjectType
 from dcim.models import (
-    Cable, Device, DeviceRole, DeviceType, Interface, InterfaceTemplate, Manufacturer, Site,
+    Cable, Device, DeviceRole, DeviceType, FrontPort, Interface, InterfaceTemplate, Manufacturer, Site,
 )
 from netbox.models import ChangeLoggedModel
 from users.models import ObjectPermission, User
 
-from netbox_server_wizard.forms import AdapterForm, ServerForm
+from netbox_server_wizard.forms import AdapterForm, ConnectionForm, ServerForm
 from netbox_server_wizard.models import Adapter, AdapterPort, DeviceProject, Project
-from netbox_server_wizard.views import save_wizard, validate_switch_target
+from netbox_server_wizard.views import save_wizard, validate_switch_target, free_ports
 
 
 class WizardFixture:
@@ -99,7 +99,7 @@ class WizardIntegrationTests(WizardFixture, TestCase):
         InterfaceTemplate.objects.create(
             device_type=self.switch_type, name="uplink1", type="1000base-t",
         )
-        with patch("netbox_server_wizard.views.get_plugin_config", return_value=["switch"]):
+        with patch("netbox_server_wizard.targets.get_plugin_config", side_effect=lambda _plugin, setting: ["switch"] if setting == "switch_role_slugs" else []):
             new_switch = save_wizard(
                 self.request(), self.new_device_data("switch-02", "switch"), [],
                 [("uplink1", self.switch_port.pk)],
@@ -115,7 +115,7 @@ class WizardIntegrationTests(WizardFixture, TestCase):
             "ports_list": ["fc0", "fc1"],
             "port_wwns_list": ["10:00:00:10:9B:12:34:50", "10:00:00:10:9B:12:34:51"],
         }]
-        with patch("netbox_server_wizard.views.get_plugin_config", return_value=["switch"]):
+        with patch("netbox_server_wizard.targets.get_plugin_config", side_effect=lambda _plugin, setting: ["switch"] if setting == "switch_role_slugs" else []):
             device = save_wizard(
                 self.request(), self.new_device_data(), cards,
                 [("eno1", self.switch_port.pk), ("fc0", self.fc_port.pk)],
@@ -148,7 +148,7 @@ class WizardIntegrationTests(WizardFixture, TestCase):
         self.assertTrue(Interface.objects.filter(device=device, name="ens2f0").exists())
 
     def test_fail_closed_if_switch_roles_not_set(self):
-        with patch("netbox_server_wizard.views.get_plugin_config", return_value=[]):
+        with patch("netbox_server_wizard.targets.get_plugin_config", return_value=[]):
             with self.assertRaises(ValidationError):
                 save_wizard(self.request(), self.new_device_data(), [],
                             [("eno1", self.switch_port.pk)])
@@ -156,7 +156,7 @@ class WizardIntegrationTests(WizardFixture, TestCase):
         self.assertFalse(Cable.objects.exists())
 
     def test_duplicate_cable_port_rolls_back_everything(self):
-        with patch("netbox_server_wizard.views.get_plugin_config", return_value=["switch"]):
+        with patch("netbox_server_wizard.targets.get_plugin_config", side_effect=lambda _plugin, setting: ["switch"] if setting == "switch_role_slugs" else []):
             with self.assertRaises(ValidationError):
                 save_wizard(self.request(), self.new_device_data(), [],
                             [("eno1", self.switch_port.pk), ("eno1", self.switch_port.pk)])
@@ -167,9 +167,75 @@ class WizardIntegrationTests(WizardFixture, TestCase):
             name="not-a-switch", site=self.site, device_type=self.server_type, role=self.server_role,
         )
         fake_port = Interface.objects.get(device=fake_target, name="eno1")
-        with patch("netbox_server_wizard.views.get_plugin_config", return_value=["switch"]):
+        with patch("netbox_server_wizard.targets.get_plugin_config", side_effect=lambda _plugin, setting: ["switch"] if setting == "switch_role_slugs" else []):
             with self.assertRaises(ValidationError):
                 validate_switch_target(self.user, fake_port, self.site)
+
+    def make_patch_panel(self):
+        panel_role = DeviceRole.objects.create(name="Патч-панель", slug="patch-panel")
+        panel_type = DeviceType.objects.create(
+            manufacturer=self.server_type.manufacturer, model="Panel 24 LC", slug="wizard-panel",
+        )
+        panel = Device.objects.create(
+            name="panel-01", site=self.site, device_type=panel_type, role=panel_role,
+        )
+        front = FrontPort.objects.create(device=panel, name="LC-01", type="lc", positions=1)
+        return panel, front
+
+    def test_first_cable_to_patch_panel_front_port(self):
+        _panel, front = self.make_patch_panel()
+        def roles(_plugin, setting):
+            return ["switch"] if setting == "switch_role_slugs" else (["patch-panel"] if setting == "patch_panel_role_slugs" else [])
+        with patch("netbox_server_wizard.targets.get_plugin_config", side_effect=roles):
+            device = save_wizard(
+                self.request(), self.new_device_data("server-panel"), [],
+                [("eno1", f"frontport:{front.pk}")],
+            )
+        self.assertEqual(Cable.objects.count(), 1)
+        front.refresh_from_db()
+        self.assertIsNotNone(front.cable_id)
+        self.assertIsNotNone(Interface.objects.get(device=device, name="eno1").cable_id)
+
+    def test_patch_panel_requires_configured_role(self):
+        _panel, front = self.make_patch_panel()
+        with patch("netbox_server_wizard.targets.get_plugin_config", return_value=[]):
+            with self.assertRaises(ValidationError):
+                save_wizard(
+                    self.request(), self.new_device_data("panel-denied"), [],
+                    [("eno1", f"frontport:{front.pk}")],
+                )
+        self.assertFalse(Device.objects.filter(name="panel-denied").exists())
+
+    def test_form_restricts_frontport_to_panel(self):
+        panel, front = self.make_patch_panel()
+        def roles(_plugin, setting):
+            return ["switch"] if setting == "switch_role_slugs" else (["patch-panel"] if setting == "patch_panel_role_slugs" else [])
+        data = {"nic": "eno1", "kind": "ethernet", "switch": str(panel.pk),
+                "port": f"frontport:{front.pk}"}
+        with patch("netbox_server_wizard.targets.get_plugin_config", side_effect=roles):
+            form = ConnectionForm(data, site=self.site, user=self.user)
+            self.assertTrue(form.is_valid(), form.errors)
+            api_req = self.factory.get("/plugins/netbox_server_wizard/ports/", {
+                "site_id": str(self.site.pk), "device_id": str(panel.pk), "kind": "ethernet",
+            })
+            api_req.user = self.user
+            response = free_ports(api_req)
+        self.assertEqual(response.status_code, 200)
+        import json
+        data = json.loads(response.content)
+        self.assertIn(f"frontport:{front.pk}", [item["id"] for item in data["results"]])
+
+    def test_frontport_multi_position_is_not_offered(self):
+        panel, front = self.make_patch_panel()
+        front.positions = 2
+        front.save(update_fields=["positions"])
+        def roles(_plugin, setting):
+            return ["switch"] if setting == "switch_role_slugs" else (["patch-panel"] if setting == "patch_panel_role_slugs" else [])
+        with patch("netbox_server_wizard.targets.get_plugin_config", side_effect=roles):
+            form = ConnectionForm({"nic": "eno1", "kind": "ethernet", "switch": str(panel.pk),
+                                  "port": f"frontport:{front.pk}"}, site=self.site, user=self.user)
+            self.assertFalse(form.is_valid())
+            self.assertIn("port", form.errors)
 
     def test_adapters_and_projects_have_native_changelog(self):
         for model in (Project, DeviceProject, Adapter, AdapterPort):
@@ -243,7 +309,7 @@ class WizardIntegrationTests(WizardFixture, TestCase):
               {"device_id": source.pk})
         grant("Добавление кабелей", Cable, ["add"])
 
-        with patch("netbox_server_wizard.views.get_plugin_config", return_value=["switch"]):
+        with patch("netbox_server_wizard.targets.get_plugin_config", side_effect=lambda _plugin, setting: ["switch"] if setting == "switch_role_slugs" else []):
             with self.assertRaises(PermissionDenied):
                 save_wizard(
                     self.request(User.objects.get(pk=limited_user.pk)),
@@ -306,7 +372,7 @@ class ConcurrentCableTests(WizardFixture, TransactionTestCase):
             finally:
                 close_old_connections()
 
-        with patch("netbox_server_wizard.views.get_plugin_config", return_value=["switch"]):
+        with patch("netbox_server_wizard.targets.get_plugin_config", side_effect=lambda _plugin, setting: ["switch"] if setting == "switch_role_slugs" else []):
             with ThreadPoolExecutor(max_workers=2) as pool:
                 results = list(pool.map(worker, [device.pk for device in self.servers]))
         self.assertEqual(results.count("ok"), 1, results)

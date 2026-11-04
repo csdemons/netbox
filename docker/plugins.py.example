@@ -11,5 +11,6 @@ PLUGINS_CONFIG = {
         # Без switch_role_slugs список целевых портов намеренно пуст.
         "switch_role_slugs": ["switch", "san-switch"],
         "server_role_slugs": ["server"],
+        "patch_panel_role_slugs": ["patch-panel", "fiber-panel"],
     },
 }

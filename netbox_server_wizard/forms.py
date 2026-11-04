@@ -1,8 +1,7 @@
 """Формы двухшагового мастера серверов и физических подключений."""
 from django import forms
 from dcim.choices import DeviceFaceChoices, DeviceStatusChoices, LinkStatusChoices
-from dcim.constants import NONCONNECTABLE_IFACE_TYPES
-from dcim.models import Device, DeviceRole, DeviceType, Interface, Rack, Site
+from dcim.models import Device, DeviceRole, DeviceType, Rack, Site
 from netbox.plugins import get_plugin_config
 
 from .choices import (
@@ -10,6 +9,8 @@ from .choices import (
     interface_kind, parse_port_names, parse_wwns,
 )
 from .models import Project
+from .endpoints import encode_endpoint, parse_endpoint
+from .targets import permitted_targets, permitted_ports, role_termination_kind
 
 
 class ServerForm(forms.Form):
@@ -180,47 +181,50 @@ class AdapterForm(forms.Form):
 
 
 class ConnectionForm(forms.Form):
+    """Первый кабель: Interface источника -> Interface или FrontPort рядом."""
+
     nic = forms.CharField(widget=forms.HiddenInput())
     kind = forms.CharField(widget=forms.HiddenInput())
-    switch = forms.ModelChoiceField(queryset=Device.objects.none(), required=False, label="Коммутатор")
-    port = forms.ModelChoiceField(queryset=Interface.objects.none(), required=False, label="Свободный порт")
+    # Имя поля сохранено для совместимости со старой формой и данными POST.
+    switch = forms.ModelChoiceField(
+        queryset=Device.objects.none(), required=False, label="Ближайшее устройство"
+    )
+    # ChoiceField позволяет выбирать между двумя моделями окончаний кабеля,
+    # не смешивая PK Interface и FrontPort.
+    port = forms.ChoiceField(
+        choices=(("", "Без подключения"),), required=False,
+        label="Свободный Interface / FrontPort",
+    )
 
     def __init__(self, *args, site=None, user=None, exclude_device_id=None, **kwargs):
         super().__init__(*args, **kwargs)
-        if site is None:
+        if site is None or user is None:
             return
-        devices = Device.objects.filter(site=site).order_by("name")
-        if exclude_device_id:
-            devices = devices.exclude(pk=exclude_device_id)
-        role_slugs = get_plugin_config("netbox_server_wizard", "switch_role_slugs")
-        # Без явного списка ролей нельзя выбирать произвольные устройства
-        # площадки в качестве коммутаторов для кабельной коммутации.
-        if role_slugs:
-            devices = devices.filter(role__slug__in=role_slugs)
-        else:
-            devices = devices.none()
-        if user is not None:
-            devices = devices.restrict(user, "view")
+        devices = permitted_targets(site, user, exclude_device_id)
         self.fields["switch"].queryset = devices
         bound_id = self.data.get(self.add_prefix("switch")) if self.is_bound else None
-        if bound_id and str(bound_id).isdigit():
-            ports = Interface.objects.filter(
-                device_id=bound_id, device__site=site,
-                cable__isnull=True, mark_connected=False,
-            ).exclude(type__in=NONCONNECTABLE_IFACE_TYPES).order_by("name")
-            if user is not None:
-                ports = ports.restrict(user, "view").restrict(user, "change")
-            self.fields["port"].queryset = ports
+        source_kind = self.data.get(self.add_prefix("kind")) if self.is_bound else self.initial.get("kind")
+        if not bound_id or not str(bound_id).isdigit() or source_kind not in ("fc", "ethernet"):
+            return
+        device = devices.filter(pk=bound_id).first()
+        if device is None:
+            return
+        choices = [("", "Без подключения")]
+        for termination in permitted_ports(device, user, source_kind):
+            label = f"{termination.name} ({'FrontPort' if termination._meta.model_name == 'frontport' else 'Interface'})"
+            choices.append((encode_endpoint(termination), label))
+        self.fields["port"].choices = choices
 
     def clean(self):
         data = super().clean()
-        switch, port = data.get("switch"), data.get("port")
-        if bool(switch) != bool(port):
-            raise forms.ValidationError("Выберите коммутатор вместе с портом или оставьте оба поля пустыми.")
-        if port and port.device_id != switch.pk:
-            raise forms.ValidationError("Порт не принадлежит выбранному коммутатору.")
-        if port and data.get("kind") == "fc" and port.type not in ALL_FC_TYPES:
-            raise forms.ValidationError("К FC-интерфейсу необходимо выбрать FC-порт коммутатора.")
-        if port and interface_kind(port.type) != data.get("kind"):
-            raise forms.ValidationError("Тип выбранного порта не соответствует Ethernet/FC-интерфейсу.")
+        device, raw_port = data.get("switch"), data.get("port")
+        if bool(device) != bool(raw_port):
+            raise forms.ValidationError("Выберите ближайшее устройство и свободный порт либо оставьте оба поля пустыми.")
+        if raw_port:
+            try:
+                target_kind, _ = parse_endpoint(raw_port)
+            except ValueError as exc:
+                raise forms.ValidationError(str(exc)) from exc
+            if role_termination_kind(device) != target_kind:
+                raise forms.ValidationError("Порт не соответствует роли выбранного ближайшего устройства.")
         return data

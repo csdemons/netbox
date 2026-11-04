@@ -1,0 +1,10 @@
+include README.md
+include pyproject.toml
+recursive-include netbox_server_wizard/templates *.html
+recursive-include netbox_server_wizard/migrations *.py
+recursive-include netbox_server_wizard/tests *.py
+recursive-include tests *.py
+recursive-include docker *.sh *.yml Dockerfile*
+include docker/plugins.py.example
+recursive-include .github *.yml
+include .dockerignore

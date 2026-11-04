@@ -1,4 +1,4 @@
-name: Проверка NetBox Server Wizard
+name: Проверка NetBox Plan
 
 "on":
   push:
@@ -19,17 +19,34 @@ jobs:
       - name: Сборка wheel
         run: |
           python -m pip install --upgrade build
-          python -m build --wheel
+          python -m build --sdist --wheel
 
   netbox-docker-integration:
     runs-on: ubuntu-latest
+    env:
+      NETBOX_PLAN_VERSION: "0.5.0"
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
           path: netbox-publish
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Сборка wheel для Docker
+        working-directory: netbox-publish
+        run: |
+          python -m pip install --upgrade build
+          python -m build --wheel -o dist
       - name: Загрузка netbox-docker
         run: git clone --depth 1 -b release https://github.com/netbox-community/netbox-docker.git netbox-docker
+      - name: Использовать образ, согласованный с netbox-docker
+        working-directory: netbox-docker
+        run: |
+          BASE_IMAGE=$(docker compose -f docker-compose.yml config --format json \
+            | python -c 'import json,sys; print(json.load(sys.stdin)["services"]["netbox"]["image"])')
+          echo "NETBOX_BASE_IMAGE=${BASE_IMAGE}" >> "$GITHUB_ENV"
+          echo "Тестовый образ NetBox: ${BASE_IMAGE}"
       - name: Конфигурация тестового стенда
         run: |
           cp netbox-publish/docker/plugins.py.example netbox-docker/configuration/plugins.py

@@ -138,9 +138,9 @@
       {% for card in cards_formset %}{% for field in card %}{{ field.as_hidden }}{% endfor %}{% endfor %}
       {{ connections.management_form }}
       {% if connections.non_form_errors %}<div class="alert alert-danger">{{ connections.non_form_errors }}</div>{% endif %}
-      <div class="alert alert-info">Целевые устройства ограничены ролями <code>switch_role_slugs</code>. Если список ролей не настроен, подключение к коммутаторам недоступно. Для FC показываются только FC-порты. Незаполненный порт останется без кабеля.</div>
+      <div class="alert alert-info">Мастер создаёт только <strong>первый кабель</strong> до ближайшего устройства: коммутатора (<code>Interface</code>) или патч-панели (<code>FrontPort</code>). Роли задаются в <code>switch_role_slugs</code> и <code>patch_panel_role_slugs</code>. Дальнейшая трасса ведётся штатными средствами NetBox. Для однопозиционного FrontPort выбор FC/Ethernet не ограничивается типом разъёма.</div>
       <div class="table-responsive"><table class="table table-striped align-middle">
-        <thead><tr><th>Интерфейс сервера</th><th>Тип</th><th>Коммутатор / SAN-коммутатор</th><th>Свободный порт</th></tr></thead>
+        <thead><tr><th>Интерфейс сервера</th><th>Тип</th><th>Ближайшее устройство</th><th>Interface / FrontPort</th></tr></thead>
         <tbody>
           {% for row in connections.forms %}
           <tr class="link-row" data-kind="{{ row.kind.value }}">
@@ -294,7 +294,7 @@
         const response = await fetch(url + query, {credentials:'same-origin'});
         if (!response.ok) throw new Error('Не удалось загрузить свободные порты коммутатора.');
         const data = await response.json();
-        for (const item of data.results) port.add(new Option(item.name, String(item.id)));
+        for (const item of data.results) port.add(new Option(item.name + (item.type === "frontport" ? " (FrontPort)" : " (Interface)"), String(item.id)));
         if (previous && Array.from(port.options).some(o => o.value === previous)) port.value = previous;
       } catch (err) {
         notice.textContent = err.message;

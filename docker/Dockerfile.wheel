@@ -1,0 +1,12 @@
+# Зафиксируйте в NETBOX_IMAGE ровно тот тег, что уже работает в вашем NetBox Docker.
+ARG NETBOX_IMAGE
+FROM ${NETBOX_IMAGE}
+
+USER root
+COPY dist/netbox_plan-0.5.0-py3-none-any.whl /tmp/netbox_plan.whl
+RUN if command -v uv >/dev/null 2>&1; then \
+      uv pip install --python /opt/netbox/venv/bin/python --no-deps /tmp/netbox_plan.whl; \
+    else \
+      /opt/netbox/venv/bin/python -m pip install --no-deps /tmp/netbox_plan.whl; \
+    fi && rm -f /tmp/netbox_plan.whl
+USER netbox:root

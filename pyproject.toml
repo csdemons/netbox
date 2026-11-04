@@ -3,11 +3,17 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "netbox-server-wizard"
-version = "0.4.0"
-description = "Русскоязычный мастер учёта серверов и коммутаторов, Ethernet/FC адаптеров и проектов в NetBox"
+name = "netbox-plan"
+version = "0.5.0"
+description = "Русскоязычный NetBox Plan: учёт устройств, проектов и первого кабеля до Interface или FrontPort"
+readme = "README.md"
+keywords = ["netbox", "plugin", "dcim", "cabling", "patch-panel", "fibre-channel"]
+classifiers = ["Programming Language :: Python :: 3", "Framework :: Django", "Operating System :: POSIX :: Linux"]
 requires-python = ">=3.12"
 dependencies = []
+
+[project.urls]
+Source = "https://github.com/csdemons/netbox"
 
 [tool.setuptools.packages.find]
 where = ["."]
