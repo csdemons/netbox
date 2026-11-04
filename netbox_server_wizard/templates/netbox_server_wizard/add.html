@@ -1,46 +1,159 @@
 {% extends 'base/layout.html' %}
 
-{% block title %}Добавление сервера и сетевых подключений{% endblock %}
-{% block header %}<h1>Добавление сервера и сетевых подключений</h1>{% endblock %}
+{% block title %}Сервер, сетевые карты и коммутация{% endblock %}
+{% block header %}<h1>Сервер, сетевые карты и коммутация</h1>{% endblock %}
 {% block content %}
-<div class="row"><div class="col-12 col-lg-9">
+<div class="row"><div class="col-12 col-xl-10">
   {% if step == 'server' %}
-  <div class="card"><div class="card-header"><strong>1. Параметры сервера и размещение</strong></div><div class="card-body">
-    <form method="get" action="">
-      <input type="hidden" name="step" value="connections">
-      {% if server_form.non_field_errors %}<div class="alert alert-danger">{{ server_form.non_field_errors }}</div>{% endif %}
-      {% for field in server_form %}
-        <div class="mb-3"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-          {{ field }}{% for error in field.errors %}<div class="text-danger">{{ error }}</div>{% endfor %}
+  <form method="post" action="" id="wizard-form">
+    {% csrf_token %}
+    <input type="hidden" name="stage" value="preview">
+    {% if server_form.non_field_errors %}<div class="alert alert-danger">{{ server_form.non_field_errors }}</div>{% endif %}
+    <div class="card mb-3">
+      <div class="card-header"><strong>1. Выберите сервер или создайте новый</strong></div>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-12 col-md-6 mb-3"><label class="form-label" for="{{ server_form.mode.id_for_label }}">{{ server_form.mode.label }}</label>{{ server_form.mode }}{{ server_form.mode.errors }}</div>
+          <div class="col-12 col-md-6 mb-3"><label class="form-label" for="{{ server_form.site.id_for_label }}">{{ server_form.site.label }}</label>{{ server_form.site }}{{ server_form.site.errors }}</div>
         </div>
-      {% endfor %}
-      <button type="submit" class="btn btn-primary">Показать интерфейсы и настроить подключения</button>
-    </form>
-  </div></div>
+        <div id="existing-server-fields" class="mb-3" data-existing-only>
+          <label class="form-label" for="{{ server_form.existing_device.id_for_label }}">{{ server_form.existing_device.label }}</label>
+          {{ server_form.existing_device }}{{ server_form.existing_device.errors }}
+          <small id="existing-serial" class="form-text text-muted">Серийный номер будет показан после выбора сервера.</small>
+        </div>
+        <div data-create-only>
+          <div class="row">
+            {% for field in server_form %}
+              {% if field.name == 'name' or field.name == 'device_type' or field.name == 'role' or field.name == 'rack' or field.name == 'position' or field.name == 'face' or field.name == 'status' %}
+              <div class="col-12 col-md-6 mb-3">
+                <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+              </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="{{ server_form.serial.id_for_label }}">{{ server_form.serial.label }}</label>
+          {{ server_form.serial }}{% for error in server_form.serial.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          <div class="form-text">Для нового сервера укажите серийный номер корпуса. Для существующего — укажите номер, только если его нужно добавить или исправить (требуется право изменения устройства).</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header"><strong>2. Проект сервера</strong></div>
+      <div class="card-body">
+        <div class="row align-items-end">
+          <div class="col-12 col-md-8 mb-3">
+            <label class="form-label" for="{{ server_form.project.id_for_label }}">{{ server_form.project.label }}</label>
+            {{ server_form.project }}{% for error in server_form.project.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+          <div class="col-12 col-md-4 mb-3">
+            <button type="button" class="btn btn-outline-primary" id="toggle-project">+ Создать проект</button>
+          </div>
+        </div>
+        <div id="new-project-wrap" class="mb-3" {% if not server_form.new_project.value %}hidden{% endif %}>
+          <label class="form-label" for="{{ server_form.new_project.id_for_label }}">{{ server_form.new_project.label }}</label>
+          {{ server_form.new_project }}{% for error in server_form.new_project.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          <div class="form-text">Новый проект создастся при сохранении сервера. Его можно будет выбирать для следующих устройств.</div>
+        </div>
+        <div class="form-text">При работе с существующим сервером можно привязать его к выбранному проекту.</div>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>3. Дополнительные Ethernet / FC карты</strong>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="add-card">+ Добавить карту</button>
+      </div>
+      <div class="card-body">
+        {{ cards_formset.management_form }}
+        {% if cards_formset.non_form_errors %}<div class="alert alert-danger">{{ cards_formset.non_form_errors }}</div>{% endif %}
+        <p class="text-muted">Каждая карта может содержать до восьми портов. Укажите наименование, серийный номер, тип портов и их имена. Все порты появятся в штатном списке интерфейсов NetBox.</p>
+        <div id="cards-container">
+        {% for card in cards_formset %}
+          <div class="border rounded p-3 mb-3 card-form-row">
+            <div class="d-flex justify-content-between mb-2">
+              <strong>Дополнительная карта</strong>
+              <button type="button" class="btn btn-sm btn-outline-danger remove-card">Удалить карту</button>
+            </div>
+            <div class="row">
+              {% for field in card %}
+                {% if field.name == 'DELETE' %}<span class="d-none">{{ field }}</span>
+                {% else %}
+                <div class="col-12 col-md-6 mb-2"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>
+                {% endif %}
+              {% endfor %}
+            </div>
+            {% if card.non_field_errors %}<div class="text-danger">{{ card.non_field_errors }}</div>{% endif %}
+          </div>
+        {% endfor %}
+        </div>
+        <template id="empty-card-template">
+          <div class="border rounded p-3 mb-3 card-form-row">
+            <div class="d-flex justify-content-between mb-2">
+              <strong>Дополнительная карта</strong>
+              <button type="button" class="btn btn-sm btn-outline-danger remove-card">Удалить карту</button>
+            </div>
+            <div class="row">
+              {% for field in cards_formset.empty_form %}
+                {% if field.name == 'DELETE' %}<span class="d-none">{{ field }}</span>
+                {% else %}
+                <div class="col-12 col-md-6 mb-2"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header"><strong>4. Статус кабельных подключений</strong></div>
+      <div class="card-body"><label class="form-label" for="{{ server_form.cable_status.id_for_label }}">{{ server_form.cable_status.label }}</label>{{ server_form.cable_status }}{{ server_form.cable_status.errors }}</div>
+    </div>
+    <button type="submit" class="btn btn-primary">Далее: выбрать порты коммутаторов</button>
+  </form>
   {% else %}
-  <div class="card mb-3"><div class="card-header"><strong>1. Параметры сервера и размещение</strong></div><div class="card-body">
-    <p><strong>{{ server_form.cleaned_data.name }}</strong> - {{ server_form.cleaned_data.site }} / {{ server_form.cleaned_data.device_type }}</p>
-    <p class="text-muted">Для изменения параметров сервера вернитесь на первый шаг. Список интерфейсов будет сформирован заново.</p>
+  <div class="card mb-3"><div class="card-header"><strong>Шаг 1 завершён</strong></div><div class="card-body">
+    <p>Сервер: <strong>{% if server_form.cleaned_data.mode == 'existing' %}{{ server_form.cleaned_data.existing_device }}{% else %}{{ server_form.cleaned_data.name }}{% endif %}</strong>
+       · Площадка: {{ server_form.cleaned_data.site }}</p>
+    {% if server_form.cleaned_data.mode == 'create' %}
+      <p>Модель: {{ server_form.cleaned_data.device_type }} · Серийный номер: {{ server_form.cleaned_data.serial|default:'не указан' }}</p>
+    {% else %}
+      <p>Текущий серийный номер: {{ server_form.cleaned_data.existing_device.serial|default:'не указан' }}{% if server_form.cleaned_data.serial %}; новый номер: {{ server_form.cleaned_data.serial }}{% endif %}</p>
+    {% endif %}
+    <p>Проект: {% if server_form.cleaned_data.new_project %}{{ server_form.cleaned_data.new_project }} (новый){% elif server_form.cleaned_data.project %}{{ server_form.cleaned_data.project }}{% else %}не указан{% endif %}</p>
+    <p class="text-muted">Чтобы исправить параметры сервера, вернитесь в браузере на предыдущую страницу.</p>
   </div></div>
-  <div class="card"><div class="card-header"><strong>2. Подключение интерфейсов к свободным портам коммутаторов</strong></div><div class="card-body">
+  <div class="card mb-3"><div class="card-header"><strong>Шаг 2. Подключение интерфейсов к коммутаторам</strong></div><div class="card-body">
     <form method="post" action="">
       {% csrf_token %}
+      <input type="hidden" name="stage" value="save">
       {% for field in server_form %}{{ field.as_hidden }}{% endfor %}
-      {{ formset.management_form }}
-      {% if formset.non_form_errors %}<div class="alert alert-danger">{{ formset.non_form_errors }}</div>{% endif %}
-      <p class="text-muted">Коммутаторы и свободные порты загружаются из NetBox. Если ничего не выбирать в строке, интерфейс останется без подключения.</p>
+      {{ cards_formset.management_form }}
+      {% for card in cards_formset %}{% for field in card %}{{ field.as_hidden }}{% endfor %}{% endfor %}
+      {{ connections.management_form }}
+      {% if connections.non_form_errors %}<div class="alert alert-danger">{{ connections.non_form_errors }}</div>{% endif %}
+      <div class="alert alert-info">Порты загрузятся из NetBox. Если оставить строку пустой, интерфейс сохранится без кабеля. Для FC показываются FC-порты коммутаторов.</div>
       <div class="table-responsive"><table class="table table-striped align-middle">
-        <thead><tr><th>Интерфейс сервера</th><th>Коммутатор</th><th>Свободный порт</th></tr></thead>
+        <thead><tr><th>Интерфейс сервера</th><th>Тип</th><th>Коммутатор / FC-коммутатор</th><th>Свободный порт</th></tr></thead>
         <tbody>
-          {% for row in formset.forms %}
-            <tr class="link-row"><td>{{ row.nic }}<strong>{{ row.nic.value }}</strong></td>
-              <td>{{ row.switch }}</td><td>{{ row.port }}</td></tr>
-            {% if row.errors %}<tr><td colspan="3" class="text-danger">{{ row.errors }}</td></tr>{% endif %}
+          {% for row in connections.forms %}
+          <tr class="link-row" data-kind="{{ row.kind.value }}">
+            <td>{{ row.nic }}<strong>{{ row.nic.value }}</strong></td>
+            <td>{{ row.kind }}{% if row.kind.value == 'fc' %}<span class="badge bg-primary">FC</span>{% else %}Ethernet{% endif %}</td>
+            <td>{{ row.switch }}</td><td>{{ row.port }}</td>
+          </tr>
+          {% if row.errors %}<tr><td colspan="4" class="text-danger">{{ row.errors }}</td></tr>{% endif %}
           {% endfor %}
         </tbody>
       </table></div>
-      <a href="{% url 'plugins:netbox_server_wizard:add' %}" class="btn btn-outline-secondary">Начать заново</a>
-      <button type="submit" class="btn btn-primary">Создать сервер и выбранные кабельные подключения</button>
+      {% if not connections.forms %}<p class="text-muted">Нет свободных интерфейсов. Сервер и проект можно сохранить без кабелей.</p>{% endif %}
+      <button type="button" class="btn btn-outline-secondary" onclick="history.back()">Назад к картам</button>
+      <button type="submit" class="btn btn-primary">Сохранить сервер, карты, проект и кабели</button>
     </form>
   </div></div>
   {% endif %}
@@ -53,59 +166,136 @@
 <script>
 (function () {
   'use strict';
-  const site = document.querySelector('select[name="site"]');
-  const rack = document.querySelector('select[name="rack"]');
-  if (!site || !rack) return;
-  const url = '{% url "plugins:netbox_server_wizard:racks" %}';
-  async function loadRacks() {
-    rack.replaceChildren(new Option('Не выбрано', ''));
+  const mode = document.getElementById('id_mode');
+  const site = document.getElementById('id_site');
+  const rack = document.getElementById('id_rack');
+  const existing = document.getElementById('id_existing_device');
+  const serial = document.getElementById('existing-serial');
+  const existingWrap = document.getElementById('existing-server-fields');
+  const newWraps = document.querySelectorAll('[data-create-only]');
+  const newProjectWrap = document.getElementById('new-project-wrap');
+  const newProjectInput = document.getElementById('id_new_project');
+  const projectSelect = document.getElementById('id_project');
+  const errorBox = document.createElement('div');
+  errorBox.className = 'text-danger small mb-2';
+  site.insertAdjacentElement('afterend', errorBox);
+
+  function updateMode() {
+    const isExisting = mode.value === 'existing';
+    existingWrap.hidden = !isExisting;
+    newWraps.forEach(el => {el.hidden = isExisting;});
+  }
+  async function loadSelect(url, target, label, selected) {
+    target.replaceChildren(new Option(label, ''));
     if (!site.value) return;
-    rack.disabled = true;
+    target.disabled = true;
     try {
-      const response = await fetch(url + '?site_id=' + encodeURIComponent(site.value), {credentials: 'same-origin'});
-      if (!response.ok) throw new Error('Не удалось загрузить список стоек');
-      const data = await response.json();
-      for (const item of data.results) rack.add(new Option(item.name, String(item.id)));
+      const response = await fetch(url + '?site_id=' + encodeURIComponent(site.value), {credentials:'same-origin'});
+      if (!response.ok) throw new Error('Не удалось получить список. Проверьте права и доступность NetBox.');
+      const json = await response.json();
+      for (const item of json.results) {
+        const option = new Option(item.name, String(item.id));
+        if (item.serial) option.dataset.serial = item.serial;
+        if (item.project_id) option.dataset.projectId = String(item.project_id);
+        target.add(option);
+      }
+      if (selected && Array.from(target.options).some(o => o.value === selected)) target.value = selected;
     } catch (err) {
-      console.error(err);
+      errorBox.textContent = err.message;
     } finally {
-      rack.disabled = false;
+      target.disabled = false;
     }
   }
-  site.addEventListener('change', loadRacks);
+  function updateSerial() {
+    const item = existing.selectedOptions[0];
+    serial.textContent = item && item.value ? 'Серийный номер: ' + (item.dataset.serial || 'не указан') : 'Выберите сервер из списка.';
+    if (item && item.dataset.projectId && !newProjectInput.value.trim() && !projectSelect.value) {
+      if (Array.from(projectSelect.options).some(o => o.value === item.dataset.projectId)) {
+        projectSelect.value = item.dataset.projectId;
+      }
+    }
+  }
+  mode.addEventListener('change', updateMode);
+  site.addEventListener('change', function () {
+    errorBox.textContent = '';
+    loadSelect('{% url "plugins:netbox_server_wizard:racks" %}', rack, 'Не выбрано', '');
+    loadSelect('{% url "plugins:netbox_server_wizard:devices" %}', existing, 'Выберите сервер', '').then(updateSerial);
+  });
+  existing.addEventListener('change', updateSerial);
+  updateMode();
+  if (site.value) {
+    loadSelect('{% url "plugins:netbox_server_wizard:devices" %}', existing, 'Выберите сервер', existing.value).then(updateSerial);
+  }
+
+  document.getElementById('toggle-project').addEventListener('click', function () {
+    newProjectWrap.hidden = !newProjectWrap.hidden;
+    if (!newProjectWrap.hidden) {
+      projectSelect.value = '';
+      newProjectInput.focus();
+    } else {
+      newProjectInput.value = '';
+    }
+  });
+  newProjectInput.addEventListener('input', function () {
+    if (newProjectInput.value.trim()) projectSelect.value = '';
+  });
+  projectSelect.addEventListener('change', function () {
+    if (projectSelect.value) { newProjectInput.value = ''; newProjectWrap.hidden = true; }
+  });
+
+  const container = document.getElementById('cards-container');
+  const template = document.getElementById('empty-card-template');
+  const total = document.getElementById('id_cards-TOTAL_FORMS');
+  document.getElementById('add-card').addEventListener('click', function () {
+    if (Number(total.value) >= 16) { alert('Максимум 16 дополнительных карт за один раз.'); return; }
+    const index = Number(total.value);
+    container.insertAdjacentHTML('beforeend', template.innerHTML.replaceAll('__prefix__', String(index)));
+    total.value = String(index + 1);
+  });
+  container.addEventListener('click', function (event) {
+    const button = event.target.closest('.remove-card');
+    if (!button) return;
+    const row = button.closest('.card-form-row');
+    const del = row.querySelector('input[name$="-DELETE"]');
+    if (del) { del.checked = true; row.hidden = true; }
+  });
 }());
 </script>
 {% endif %}
-{% if formset %}
+{% if connections %}
 <script>
 (function () {
   'use strict';
   const url = '{% url "plugins:netbox_server_wizard:ports" %}';
   const siteId = '{{ server_form.cleaned_data.site.pk }}';
+  const notice = document.createElement('div');
+  notice.className = 'text-danger small mb-2';
+  document.querySelector('.table-responsive').insertAdjacentElement('beforebegin', notice);
   document.querySelectorAll('.link-row').forEach(function (row) {
     const sw = row.querySelector('select[name$="-switch"]');
     const port = row.querySelector('select[name$="-port"]');
     if (!sw || !port) return;
-    const selectedValue = port.value;
-    async function updatePorts() {
-      const previous = port.value || selectedValue;
-      port.replaceChildren(new Option('Не выбрано', ''));
+    const initial = port.value;
+    async function refreshPorts(restore) {
+      const previous = restore ? initial : '';
+      port.replaceChildren(new Option('Без подключения', ''));
       if (!sw.value) return;
       port.disabled = true;
       try {
-        const response = await fetch(url + '?site_id=' + encodeURIComponent(siteId) + '&device_id=' + encodeURIComponent(sw.value), {credentials: 'same-origin'});
-        if (!response.ok) throw new Error('Не удалось загрузить свободные порты');
+        const query = '?site_id=' + encodeURIComponent(siteId) + '&device_id=' + encodeURIComponent(sw.value) + '&kind=' + encodeURIComponent(row.dataset.kind);
+        const response = await fetch(url + query, {credentials:'same-origin'});
+        if (!response.ok) throw new Error('Не удалось загрузить свободные порты коммутатора.');
         const data = await response.json();
         for (const item of data.results) port.add(new Option(item.name, String(item.id)));
-        if (Array.from(port.options).some(opt => opt.value === previous)) port.value = previous;
+        if (previous && Array.from(port.options).some(o => o.value === previous)) port.value = previous;
       } catch (err) {
-        console.error(err);
+        notice.textContent = err.message;
       } finally {
         port.disabled = false;
       }
     }
-    sw.addEventListener('change', function () {port.value = ''; updatePorts();});
-    if (sw.value) updatePorts();
+    sw.addEventListener('change', function () { notice.textContent = ''; refreshPorts(false); });
+    if (sw.value) refreshPorts(true);
   });
 }());
 </script>

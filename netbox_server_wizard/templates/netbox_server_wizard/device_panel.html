@@ -1,0 +1,21 @@
+<div class="card mb-3">
+  <div class="card-header"><strong>Проект и дополнительные сетевые карты</strong></div>
+  <div class="card-body">
+    {% if can_view_project %}<p><strong>Проект:</strong> {% if project_assignment %}{{ project_assignment.project.name }}{% else %}не назначен{% endif %}</p>{% endif %}
+    {% if can_view_adapters %}
+      <strong>Дополнительные Ethernet / FC карты</strong>
+      <ul class="mt-2 mb-0">
+      {% for adapter in server_adapters %}
+        <li>
+          {{ adapter.name }} ({{ adapter.get_kind_display }})
+          {% if adapter.serial %}· S/N: {{ adapter.serial }}{% endif %}
+          {% if adapter.part_number %}· {{ adapter.part_number }}{% endif %}
+          <ul>{% for port in adapter.ports.all %}<li>{{ port.interface.name }}</li>{% endfor %}</ul>
+        </li>
+      {% empty %}
+        <li>Дополнительных карт нет.</li>
+      {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+</div>

@@ -1,0 +1,19 @@
+{% extends 'base/layout.html' %}
+{% block title %}Проекты серверов{% endblock %}
+{% block header %}<h1>Проекты серверов</h1>{% endblock %}
+{% block content %}
+<div class="row"><div class="col-lg-10">
+  <div class="card">
+    <div class="card-header"><strong>Проекты и количество зарегистрированных серверов</strong></div>
+    <div class="card-body">
+      <p class="text-muted">Новый проект можно создать через <a href="{% url 'plugins:netbox_server_wizard:add' %}">мастер добавления сервера</a>.</p>
+      <table class="table table-striped">
+        <thead><tr><th>Проект</th><th>Описание</th><th>Устройств</th></tr></thead>
+        <tbody>{% for project in projects %}
+          <tr><td>{{ project.name }}</td><td>{{ project.description|default:'—' }}</td><td>{{ project.device_count }}</td></tr>
+        {% empty %}<tr><td colspan="3">Проектов пока нет.</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+</div></div>
+{% endblock %}
