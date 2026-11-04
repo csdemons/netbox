@@ -73,7 +73,7 @@ class ConnectionForm(forms.Form):
         if site is None:
             return
         devices = Device.objects.filter(site=site).order_by("name")
-        role_slugs = get_plugin_config("rrcki_server_wizard", "switch_role_slugs")
+        role_slugs = get_plugin_config("netbox_server_wizard", "switch_role_slugs")
         if role_slugs:
             devices = devices.filter(role__slug__in=role_slugs)
         if user is not None:

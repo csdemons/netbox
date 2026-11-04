@@ -39,7 +39,7 @@
           {% endfor %}
         </tbody>
       </table></div>
-      <a href="{% url 'plugins:rrcki_server_wizard:add' %}" class="btn btn-outline-secondary">Начать заново</a>
+      <a href="{% url 'plugins:netbox_server_wizard:add' %}" class="btn btn-outline-secondary">Начать заново</a>
       <button type="submit" class="btn btn-primary">Создать сервер и выбранные кабельные подключения</button>
     </form>
   </div></div>
@@ -56,7 +56,7 @@
   const site = document.querySelector('select[name="site"]');
   const rack = document.querySelector('select[name="rack"]');
   if (!site || !rack) return;
-  const url = '{% url "plugins:rrcki_server_wizard:racks" %}';
+  const url = '{% url "plugins:netbox_server_wizard:racks" %}';
   async function loadRacks() {
     rack.replaceChildren(new Option('Не выбрано', ''));
     if (!site.value) return;
@@ -80,7 +80,7 @@
 <script>
 (function () {
   'use strict';
-  const url = '{% url "plugins:rrcki_server_wizard:ports" %}';
+  const url = '{% url "plugins:netbox_server_wizard:ports" %}';
   const siteId = '{{ server_form.cleaned_data.site.pk }}';
   document.querySelectorAll('.link-row').forEach(function (row) {
     const sw = row.querySelector('select[name$="-switch"]');

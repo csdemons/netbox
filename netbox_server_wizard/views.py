@@ -128,7 +128,7 @@ def add_server(request):
                     messages.success(request, f"Сервер «{device.name}» создан. Кабельных подключений: {len(link_plan)}.")
                     return redirect(device.get_absolute_url())
 
-    return render(request, "rrcki_server_wizard/add.html", {
+    return render(request, "netbox_server_wizard/add.html", {
         "server_form": server_form,
         "formset": formset,
         "step": "connections" if formset is not None else "server",
@@ -149,7 +149,7 @@ def free_ports(request):
     ).first()
     if device is None:
         return JsonResponse({"results": []}, status=404)
-    role_slugs = get_plugin_config("rrcki_server_wizard", "switch_role_slugs")
+    role_slugs = get_plugin_config("netbox_server_wizard", "switch_role_slugs")
     if role_slugs and device.role.slug not in role_slugs:
         return JsonResponse({"results": []}, status=404)
     ports = Interface.objects.restrict(request.user, "view").filter(

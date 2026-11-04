@@ -1,4 +1,4 @@
-# RRCKI NetBox Server Wizard — мастер добавления серверов
+# NetBox Server Wizard — мастер добавления серверов
 
 Плагин для **NetBox**, позволяющий за один проход зарегистрировать физический сервер,
 получить его сетевые интерфейсы из шаблона модели оборудования (*Device Type*),
@@ -8,7 +8,7 @@
 **Важное отличие:** плагин фиксирует схему коммутации в NetBox, но **не меняет
 конфигурацию реальных коммутаторов**.
 
-> **Статус проекта:** экспериментальная версия (MVP) `0.1.0`.
+> **Статус проекта:** экспериментальная версия (MVP) `0.2.0`.
 > Ориентир — NetBox 4.5.x и Python 3.12 или новее.
 > Проверены синтаксис Python и сборка пакета. Интеграционные испытания
 > на действующем NetBox пока не проводились. Перед продуктивной установкой
@@ -29,7 +29,7 @@
 сервера и всех кабелей выполняется в **одной транзакции PostgreSQL**:
 при ошибке операция откатывается целиком.
 
-### Что умеет версия 0.1.0
+### Что умеет версия 0.2.0
 
 - Создавать физическое устройство с указанием площадки, роли, модели и размещения.
 - Получать физические интерфейсы из `InterfaceTemplate` выбранной модели.
@@ -70,16 +70,25 @@ cd /opt/netbox/netbox
 
 Убедитесь, что используемая версия NetBox совместима с `min_version = "4.5.0"`.
 
+## Важно при обновлении прежней версии
+
+В версии `0.2.0` изменены **Python-имя плагина, имя дистрибутива,
+ключи `PLUGINS` / `PLUGINS_CONFIG` и URL**. Это несовместимое переименование.
+Если предыдущая сборка уже установлена, удалите старый пакет из виртуального
+окружения, замените запись о плагине и его настройках на
+`netbox_server_wizard`, затем установите новую версию.
+Не оставляйте старый и новый идентификаторы одновременно.
+
 ## Установка на тестовый экземпляр
 
 **Не выполняйте установку сразу на продуктивном NetBox.**
 Предварительно сохраните резервную копию базы и конфигурации.
 
 Скопируйте каталог проекта на хост NetBox, например в
-`/opt/rrcki-netbox-server-wizard`, и установите пакет в его виртуальное окружение:
+`/opt/netbox-server-wizard`, и установите пакет в его виртуальное окружение:
 
 ```bash
-sudo /opt/netbox/venv/bin/python -m pip install /opt/rrcki-netbox-server-wizard
+sudo /opt/netbox/venv/bin/python -m pip install /opt/netbox-server-wizard
 ```
 
 В `/opt/netbox/netbox/netbox/configuration.py` добавьте плагин в **существующий**
@@ -88,7 +97,7 @@ sudo /opt/netbox/venv/bin/python -m pip install /opt/rrcki-netbox-server-wizard
 ```python
 PLUGINS = [
     # Сохраните здесь уже подключённые плагины
-    "rrcki_server_wizard",
+    "netbox_server_wizard",
 ]
 ```
 
@@ -97,7 +106,7 @@ PLUGINS = [
 ```python
 PLUGINS_CONFIG = {
     # Сохраните настройки остальных плагинов
-    "rrcki_server_wizard": {
+    "netbox_server_wizard": {
         "switch_role_slugs": [
             "core-switch",
             "tor-switch",
@@ -124,7 +133,7 @@ sudo systemctl restart netbox netbox-rq
 Ожидаемый адрес страницы:
 
 ```text
-/plugins/rrcki_server_wizard/add/
+/plugins/netbox_server_wizard/add/
 ```
 
 Чтобы установка сохранилась при обновлении NetBox, зафиксируйте пакет
@@ -164,13 +173,13 @@ sudo systemctl restart netbox netbox-rq
 Структура пакета:
 
 ```text
-rrcki_server_wizard/
+netbox_server_wizard/
   __init__.py
   forms.py
   views.py
   urls.py
   navigation.py
-  templates/rrcki_server_wizard/add.html
+  templates/netbox_server_wizard/add.html
 pyproject.toml
 README.md
 ```

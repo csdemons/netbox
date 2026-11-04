@@ -3,15 +3,15 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rrcki-netbox-server-wizard"
-version = "0.1.0"
+name = "netbox-server-wizard"
+version = "0.2.0"
 description = "Мастер добавления физических серверов и подключения интерфейсов к коммутаторам NetBox"
 requires-python = ">=3.12"
 dependencies = []
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["rrcki_server_wizard*"]
+include = ["netbox_server_wizard*"]
 
 [tool.setuptools.package-data]
-rrcki_server_wizard = ["templates/rrcki_server_wizard/*.html"]
+netbox_server_wizard = ["templates/netbox_server_wizard/*.html"]
