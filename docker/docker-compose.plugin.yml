@@ -4,11 +4,11 @@
 # docker compose -f docker-compose.yml -f ../netbox-publish/docker/docker-compose.plugin.yml build netbox
 services:
   netbox:
-    image: netbox-plan:${NETBOX_PLAN_VERSION:-0.5.0}
+    image: netbox-plan:${NETBOX_PLAN_VERSION:-0.5.1}
     build:
       context: ../netbox-publish
       dockerfile: docker/Dockerfile.wheel
       args:
         NETBOX_IMAGE: ${NETBOX_BASE_IMAGE:?Set NETBOX_BASE_IMAGE to exact deployed NetBox Docker tag}
   netbox-worker:
-    image: netbox-plan:${NETBOX_PLAN_VERSION:-0.5.0}
+    image: netbox-plan:${NETBOX_PLAN_VERSION:-0.5.1}

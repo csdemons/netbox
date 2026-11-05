@@ -11,6 +11,7 @@ from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET, require_http_methods
 
+from dcim.constants import NONCONNECTABLE_IFACE_TYPES
 from dcim.models import Cable, Device, Interface, FrontPort, InterfaceTemplate, Rack, Site
 from netbox.plugins import get_plugin_config
 

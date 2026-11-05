@@ -10,7 +10,7 @@
 перемычки и дальнейшие кабели остаются ответственностью **штатного NetBox**.
 Мастер не изменяет физическое оборудование и не настраивает коммутаторы.
 
-> Версия **0.5.0** — тестовая, не предназначена для немедленной установки на
+> Версия **0.5.1** — тестовая, не предназначена для немедленной установки на
 > продуктивный NetBox. Проверяются Python-синтаксис, pip-сборка и автономные
 > тесты. Для допуска к эксплуатации нужно запустить интеграционные тесты
 > на отдельно развёрнутом NetBox + PostgreSQL (Docker).
@@ -20,7 +20,7 @@
 | Что | Имя |
 |---|---|
 | Пакет для `pip install` | `netbox-plan` |
-| Файл дистрибутива | `netbox_plan-0.5.0-py3-none-any.whl` |
+| Файл дистрибутива | `netbox_plan-0.5.1-py3-none-any.whl` |
 | Модуль плагина в `PLUGINS` | `netbox_server_wizard` |
 | Ключ настроек `PLUGINS_CONFIG` | `netbox_server_wizard` |
 | Миграции и существующие таблицы БД | `netbox_server_wizard` |
@@ -100,7 +100,7 @@ docker compose images
 cd /path/to/netbox-publish
 python3 -m pip install --upgrade build
 python3 -m build --sdist --wheel -o dist
-# wheel: dist/netbox_plan-0.5.0-py3-none-any.whl
+# wheel: dist/netbox_plan-0.5.1-py3-none-any.whl
 ```
 
 В каталоге `netbox-docker/` создайте/дополните
@@ -132,7 +132,7 @@ PLUGINS_CONFIG = {
 ```bash
 # Укажите точный текущий тег своего образа NetBox, а не обновляйтесь вместе с плагином.
 export NETBOX_BASE_IMAGE='docker.io/netboxcommunity/netbox:<точный-текущий-тег>'
-export NETBOX_PLAN_VERSION='0.5.0'
+export NETBOX_PLAN_VERSION='0.5.1'
 
 # Если проект лежит рядом, как в примере:
 cp ../netbox-publish/docker/docker-compose.plugin.yml docker-compose.plan.yml
@@ -163,7 +163,7 @@ docker compose -f docker-compose.yml -f docker-compose.plan.yml exec netbox \
 **Миграции**: при первой установке нужны `0001_initial` и
 `0002_changelog_fields`. NetBox Docker обычно выполняет миграции при запуске;
 перед запуском проверьте план миграций и резервную копию PostgreSQL.
-Миграций специально для `0.5.0` нет: схема сохранена как у `0.4.0`.
+Миграций специально для `0.5.1` нет: схема сохранена как у `0.4.0`.
 
 ## Тесты
 
@@ -186,7 +186,7 @@ python3 -m pip wheel --no-deps --no-build-isolation -w dist .
 
 Тесты покрывают миграции, создание сервера и коммутатора, Ethernet/FC,
 WWPN, права, откат транзакции, одновременное соединение к одному порту
-коммутатора, а в `0.5.0` — подключение к FrontPort патч-панели.
+коммутатора, а в `0.5.1` — подключение к FrontPort патч-панели.
 
 **Проверенные локальные тесты не означают, что интеграционные тесты прошли.**
 Полную совместимость с реальным тегом NetBox Docker необходимо подтвердить

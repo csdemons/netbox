@@ -11,7 +11,7 @@ from unittest.mock import patch
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.contrib.contenttypes.models import ContentType
 from core.models import ObjectChange
-from django.db import IntegrityError, close_old_connections, connection
+from django.db import IntegrityError, close_old_connections, connection, connections
 from django.test import RequestFactory, TestCase, TransactionTestCase
 
 from core.models import ObjectType
@@ -370,7 +370,7 @@ class ConcurrentCableTests(WizardFixture, TransactionTestCase):
             except (ValidationError, IntegrityError) as exc:
                 return f"rejected: {type(exc).__name__}"
             finally:
-                close_old_connections()
+                connections.close_all()
 
         with patch("netbox_server_wizard.targets.get_plugin_config", side_effect=lambda _plugin, setting: ["switch"] if setting == "switch_role_slugs" else []):
             with ThreadPoolExecutor(max_workers=2) as pool:

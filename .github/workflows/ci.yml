@@ -24,7 +24,7 @@ jobs:
   netbox-docker-integration:
     runs-on: ubuntu-latest
     env:
-      NETBOX_PLAN_VERSION: "0.5.0"
+      NETBOX_PLAN_VERSION: "0.5.1"
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
